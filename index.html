@@ -14,7 +14,7 @@
 
     <!-- PeerJS WebRTC -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <!-- Yapay Zeka (TensorFlow.js & COCO-SSD) -->
+    <!-- Yapay Zeka (TensorFlow.js WebGL & COCO-SSD) -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
@@ -22,7 +22,7 @@
         :root {
             --bg: #000000;
             --surface: rgba(28, 28, 30, 0.78);
-            --surface-elevated: rgba(44, 44, 46, 0.85);
+            --surface-elevated: rgba(44, 44, 46, 0.88);
             --border: rgba(255, 255, 255, 0.12);
             --text-primary: #ffffff;
             --text-secondary: rgba(235, 235, 245, 0.6);
@@ -30,6 +30,7 @@
             --accent: #0071e3;
             --danger: #ff453a;
             --success: #30d158;
+            --apple-yellow: #ffd60a;
             --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
         }
 
@@ -53,7 +54,6 @@
             min-height: 100vh;
         }
 
-        /* Apple Tarzı Görünüm & Bölümler */
         #role, #vs {
             min-height: 100vh;
             display: flex;
@@ -74,7 +74,6 @@
             }
         }
 
-        /* Apple Translucent Kart */
         .card {
             background: var(--surface);
             padding: 28px 24px;
@@ -90,7 +89,7 @@
         }
 
         .app-logo {
-            font-size: 30px;
+            font-size: 32px;
             font-weight: 700;
             letter-spacing: -0.04em;
             margin-bottom: 4px;
@@ -105,7 +104,6 @@
             margin-bottom: 24px;
         }
 
-        /* Apple Butonlar - Kesinlikle Gradient Yok */
         .btn {
             padding: 13px 18px;
             font-size: 14px;
@@ -128,13 +126,11 @@
             opacity: 0.82;
         }
 
-        /* Beyaz Birincil Buton */
         .btn-primary {
             background: #ffffff;
             color: #000000;
         }
 
-        /* Translucent İkincil Buton */
         .btn-secondary {
             background: rgba(255, 255, 255, 0.12);
             color: #ffffff;
@@ -143,12 +139,6 @@
 
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.16);
-        }
-
-        .btn-danger {
-            background: rgba(255, 69, 58, 0.16);
-            color: var(--danger);
-            border: 0.5px solid rgba(255, 69, 58, 0.3);
         }
 
         .btn-ghost {
@@ -160,7 +150,6 @@
             color: var(--text-primary);
         }
 
-        /* SVG İkon Yardımcısı */
         .icon {
             width: 18px;
             height: 18px;
@@ -170,7 +159,6 @@
             flex-shrink: 0;
         }
 
-        /* Apple Tarzı Şifre Kutusu */
         .inp {
             width: 100%;
             padding: 14px;
@@ -215,7 +203,7 @@
             font-variant-numeric: tabular-nums;
         }
 
-        /* Apple Dynamic Banner / Alarm */
+        /* Apple Alert */
         #alert {
             display: none;
             position: fixed;
@@ -244,7 +232,6 @@
             to { opacity: 1; transform: translate(-50%, 0) scale(1); }
         }
 
-        /* Ana Kamera Görüntüsü */
         #main {
             display: none;
             height: 100vh;
@@ -273,10 +260,28 @@
             object-fit: cover;
             display: block;
             z-index: 2;
-            cursor: crosshair;
+            cursor: pointer;
         }
 
-        /* Apple HUD Yapısı */
+        /* Dokunma / Focus Ring Animasyonu (Apple Camera Sarısı) */
+        #focus-ring {
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            border: 2px solid var(--apple-yellow);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(1.5);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 15;
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+        }
+
+        #focus-ring.active {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+        }
+
         #hud {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -290,7 +295,6 @@
             padding-bottom: max(16px, env(safe-area-inset-bottom));
         }
 
-        /* Üst Durum Kapsülü (Pill) */
         #bar {
             pointer-events: auto;
             background: var(--surface);
@@ -336,7 +340,6 @@
             background: var(--success);
         }
 
-        /* Hedef Durum Kapsülü */
         #target-banner {
             pointer-events: auto;
             background: var(--surface);
@@ -374,7 +377,6 @@
             transform: scale(0.95);
         }
 
-        /* Alt Kontroller */
         #controls-wrapper {
             position: relative;
             width: 100%;
@@ -402,7 +404,6 @@
             box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
         }
 
-        /* Ekranı Karartma (Stealth / Gizli Mod) */
         #stealth {
             display: none;
             position: fixed;
@@ -498,9 +499,11 @@
 
 <!-- KAMERA VE İZLEME EKRANI -->
 <div id="main">
-    <div class="vc">
+    <div class="vc" id="video-container">
         <video id="vid" autoplay playsinline muted></video>
         <canvas id="cvs"></canvas>
+        <!-- Apple Odak Halkası -->
+        <div id="focus-ring"></div>
     </div>
 
     <!-- SAĞ ÜST ARAYÜZ GİZLE / GÖSTER BUTONU -->
@@ -523,7 +526,7 @@
 
             <!-- HEDEF DURUM BİLGİ KAPSÜLÜ -->
             <div id="target-banner">
-                <span id="target-status-text">Hedefe dokunarak kilitleyin</span>
+                <span id="target-status-text">Kişiye veya nesneye dokunun</span>
                 <button id="btnQuickUnlock">Kilidi Aç</button>
             </div>
         </div>
@@ -570,6 +573,6 @@
     </div>
 </div>
 
-<script type="module" src="app.js?v=65"></script>
+<script type="module" src="app.js?v=70"></script>
 </body>
 </html>
