@@ -43,10 +43,10 @@ let aiModel = null;
 let isAiLoading = false;
 let isDetecting = false;
 
-// Optimize çıkarım canvas'ı (Hız ve FPS artışı için)
+// Uzaktaki ve küçük kişileri net yakalamak için optimize edilmiş yüksek çözünürlüklü çıkarım tuvali
 const inferCanvas = document.createElement('canvas');
-inferCanvas.width = 384;
-inferCanvas.height = 288;
+inferCanvas.width = 640;
+inferCanvas.height = 480;
 const inferCtx = inferCanvas.getContext('2d', { willReadFrequently: true });
 
 // Algılanan nesneler: normalize [normX, normY, normW, normH]
@@ -319,10 +319,11 @@ function lockTargetAtNormCoords(normX, normY) {
             break;
         }
 
+        // İçinde değilse en yakın kişiyi ara (uzaktaki küçük figürler için geniş tolerans)
         const cx = x + w / 2;
         const cy = y + h / 2;
         const dist = Math.hypot(normX - cx, normY - cy);
-        if (dist < minDistance && dist < 0.22) {
+        if (dist < minDistance && dist < 0.30) {
             minDistance = dist;
             personMatch = det;
         }
@@ -385,9 +386,9 @@ async function runAiDetection() {
     isDetecting = true;
 
     try {
-        // 384x288 inferCanvas üzerine çizerek 3 kat hızlandır
         inferCtx.drawImage(vid, 0, 0, inferCanvas.width, inferCanvas.height);
-        const predictions = await aiModel.detect(inferCanvas, 8, 0.45);
+        // Uzaktaki ve küçük kişileri kaçırmamak için minimum güven eşiği 0.20 ve maksimum kutu 20
+        const predictions = await aiModel.detect(inferCanvas, 20, 0.20);
 
         // Sadece insan/kişi (person) tespitlerini al
         const persons = predictions.filter(p => p.class === 'person');
