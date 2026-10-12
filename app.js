@@ -1,27 +1,260 @@
 // ===================================================================
-// NURSENA CAM - YÜKSEK PERFORMANSLI KAMERA & BEBEK TAKİP SİSTEMİ
+// NURSENA AI CAM - AKILLI HEDEF TAKİP VE GÜVENLİK SİSTEMİ
 // ===================================================================
 
 const vid = document.getElementById('vid');
 const cvs = document.getElementById('cvs');
 const ctx = cvs.getContext('2d');
 const alertBox = document.getElementById('alert');
+const alertTitle = document.getElementById('alert-title');
+const alertMsg = document.getElementById('alert-msg');
 const cs = document.getElementById('cs');
 const as_ = document.getElementById('as');
 const cp = document.getElementById('cp');
+const targetStatusText = document.getElementById('target-status-text');
+const btnQuickUnlock = document.getElementById('btnQuickUnlock');
 
 let peer = null, conn = null, call = null;
 let isCamera = false;
-let isBabyMode = false;
 let currentFacingMode = 'environment'; // Varsayılan arka kamera
 let localStream = null;
 
-let isAlerting = false;
-let vibInt = null;
-let currentFilter = 'none'; // 'none', 'thermal', 'night'
+// =================== TÜRKÇE NESNE SÖZLÜĞÜ (COCO-SSD 80 SINIF) ===================
+const LABELS_TR = {
+    'person': 'İnsan / Kişi',
+    'bicycle': 'Bisiklet',
+    'car': 'Araba',
+    'motorcycle': 'Motosiklet',
+    'airplane': 'Uçak',
+    'bus': 'Otobüs',
+    'train': 'Tren',
+    'truck': 'Kamyon',
+    'boat': 'Tekne',
+    'traffic light': 'Trafik Işığı',
+    'fire hydrant': 'Yangın Musluğu',
+    'stop sign': 'Dur Levhası',
+    'parking meter': 'Parkmetresi',
+    'bench': 'Bank',
+    'bird': 'Kuş',
+    'cat': 'Kedi',
+    'dog': 'Köpek',
+    'horse': 'At',
+    'sheep': 'Koyun',
+    'cow': 'İnek',
+    'elephant': 'Fil',
+    'bear': 'Ayı',
+    'zebra': 'Zebra',
+    'giraffe': 'Zürafa',
+    'backpack': 'Sırt Çantası',
+    'umbrella': 'Şemsiye',
+    'handbag': 'El Çantası',
+    'tie': 'Kravat',
+    'suitcase': 'Bavul',
+    'frisbee': 'Frizbi',
+    'skis': 'Kayak',
+    'snowboard': 'Snowboard',
+    'sports ball': 'Top',
+    'kite': 'Uçurtma',
+    'baseball bat': 'Beyzbol Sopası',
+    'baseball glove': 'Beyzbol Eldiveni',
+    'skateboard': 'Kaykay',
+    'surfboard': 'Sörf Tahtası',
+    'tennis racket': 'Tenis Raketi',
+    'bottle': 'Şişe',
+    'wine glass': 'Kadeh',
+    'cup': 'Fincan / Bardak',
+    'fork': 'Çatal',
+    'knife': 'Bıçak',
+    'spoon': 'Kaşık',
+    'bowl': 'Kase',
+    'banana': 'Muz',
+    'apple': 'Elma',
+    'sandwich': 'Sandviç',
+    'orange': 'Portakal',
+    'broccoli': 'Brokoli',
+    'carrot': 'Havuç',
+    'hot dog': 'Sosisli',
+    'pizza': 'Pizza',
+    'donut': 'Donut',
+    'cake': 'Pasta / Kek',
+    'chair': 'Sandalye',
+    'couch': 'Koltuk / Kanepe',
+    'potted plant': 'Saksı Bitkisi',
+    'bed': 'Yatak',
+    'dining table': 'Yemek Masası',
+    'toilet': 'Tuvalet',
+    'tv': 'Televizyon / Monitör',
+    'laptop': 'Dizüstü Bilgisayar',
+    'mouse': 'Fare',
+    'remote': 'Uzaktan Kumanda',
+    'keyboard': 'Klavye',
+    'cell phone': 'Cep Telefonu',
+    'microwave': 'Mikrodalga',
+    'oven': 'Fırın',
+    'toaster': 'Tost Makinesi',
+    'sink': 'Lavabo',
+    'refrigerator': 'Buzdolabı',
+    'book': 'Kitap',
+    'clock': 'Saat',
+    'vase': 'Vazo',
+    'scissors': 'Makas',
+    'teddy bear': 'Oyuncak Ayı',
+    'hair drier': 'Saç Kurutma Makinesi',
+    'toothbrush': 'Diş Fırçası'
+};
+
+// =================== YAPAY ZEKA VE HEDEF KİLİTLEME ===================
+let aiModel = null;
+let isAiLoading = false;
+let currentDetections = [];
+let lockedTarget = null; // { class, label, bbox: [x,y,w,h], score, lastSeen, lost: false }
+let isDetecting = false;
+
+// Web Audio API Alarm Siren Sentezleyicisi
+let audioCtx = null;
+let sirenOsc1 = null;
+let sirenOsc2 = null;
+let sirenGain = null;
+let isAlarmPlaying = false;
+let vibInterval = null;
+
+function initAudio() {
+    if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+// Güçlü Çift Tonlu Güvenlik Sireni
+function startAlarmSound() {
+    if (isAlarmPlaying) return;
+    initAudio();
+    if (!audioCtx) return;
+
+    try {
+        isAlarmPlaying = true;
+        sirenGain = audioCtx.createGain();
+        sirenGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        sirenGain.connect(audioCtx.destination);
+
+        sirenOsc1 = audioCtx.createOscillator();
+        sirenOsc2 = audioCtx.createOscillator();
+        sirenOsc1.type = 'sawtooth';
+        sirenOsc2.type = 'square';
+
+        sirenOsc1.connect(sirenGain);
+        sirenOsc2.connect(sirenGain);
+
+        // Periyodik siren modülasyonu
+        const now = audioCtx.currentTime;
+        sirenOsc1.frequency.setValueAtTime(800, now);
+        sirenOsc2.frequency.setValueAtTime(1200, now);
+
+        let toggle = false;
+        window._sirenTimer = setInterval(() => {
+            if (!isAlarmPlaying || !audioCtx) return;
+            const t = audioCtx.currentTime;
+            toggle = !toggle;
+            if (sirenOsc1) sirenOsc1.frequency.setValueAtTime(toggle ? 600 : 1000, t);
+            if (sirenOsc2) sirenOsc2.frequency.setValueAtTime(toggle ? 900 : 1400, t);
+        }, 300);
+
+        sirenOsc1.start();
+        sirenOsc2.start();
+    } catch (e) {
+        console.warn("Alarm sesi başlatılamadı:", e);
+    }
+}
+
+function stopAlarmSound() {
+    if (!isAlarmPlaying) return;
+    isAlarmPlaying = false;
+    if (window._sirenTimer) {
+        clearInterval(window._sirenTimer);
+        window._sirenTimer = null;
+    }
+    try {
+        if (sirenOsc1) { sirenOsc1.stop(); sirenOsc1.disconnect(); sirenOsc1 = null; }
+        if (sirenOsc2) { sirenOsc2.stop(); sirenOsc2.disconnect(); sirenOsc2 = null; }
+        if (sirenGain) { sirenGain.disconnect(); sirenGain = null; }
+    } catch (e) {}
+}
+
+// Hafif kilit bip sesi
+function playLockBeep() {
+    initAudio();
+    if (!audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1800, audioCtx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.12);
+    } catch (e) {}
+}
+
+// Alarmı ve titreşimi başlat
+function triggerTargetLostAlert(targetLabel) {
+    alertTitle.innerText = "🚨 HEDEF KADRAJDAN ÇIKTI!";
+    alertMsg.innerText = `Kilitlenen hedef (${targetLabel}) görüş alanından ayrıldı!`;
+    alertBox.style.display = 'flex';
+
+    startAlarmSound();
+
+    if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+    if (vibInterval) clearInterval(vibInterval);
+    vibInterval = setInterval(() => {
+        if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+    }, 1500);
+
+    if (conn && conn.open) {
+        conn.send({ type: 'target_lost', targetLabel: targetLabel });
+    }
+}
+
+// Alarmı kapat
+function dismissAlert() {
+    alertBox.style.display = 'none';
+    stopAlarmSound();
+    if (vibInterval) {
+        clearInterval(vibInterval);
+        vibInterval = null;
+    }
+    if (conn && conn.open) {
+        conn.send({ type: 'alert_dismissed' });
+    }
+}
+
+document.getElementById('btnDismissAlert').addEventListener('click', dismissAlert);
+
+// =================== YAPAY ZEKA MODELİNİ YÜKLEME ===================
+async function loadAI() {
+    if (aiModel || isAiLoading) return;
+    isAiLoading = true;
+    targetStatusText.innerText = "🤖 Yapay Zeka modeli yükleniyor...";
+    try {
+        // En yüksek doğruluk ve hız için lite mobilenet v2
+        aiModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        targetStatusText.innerText = "🎯 Hedefe dokunarak kilitleyin";
+        console.log("Yapay Zeka (COCO-SSD) başarıyla yüklendi.");
+    } catch (e) {
+        console.error("Yapay Zeka yüklenirken hata:", e);
+        targetStatusText.innerText = "⚠️ Yapay Zeka yüklenemedi!";
+    } finally {
+        isAiLoading = false;
+    }
+}
 
 // =================== KAMERA HAREKET & YÖN YÖNETİMİ ===================
-
 async function stopCamera() {
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
@@ -30,7 +263,6 @@ async function stopCamera() {
     vid.srcObject = null;
 }
 
-// Aynalama (mirror) sınıfını kameranın yönüne göre güncelle
 function updateMirroring() {
     const shouldMirror = (currentFacingMode === 'user');
     vid.classList.toggle('mirror', shouldMirror);
@@ -39,130 +271,358 @@ function updateMirroring() {
 
 async function flipCamera() {
     currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
-    console.log("Kamera yönü değiştiriliyor:", currentFacingMode);
-    
-    // Hızlı geçiş için mevcut akışı durdur
     await stopCamera();
-    
-    // Aynalama ayarını hemen güncelle
     updateMirroring();
-    
-    // Kamerayı yeni yönle tekrar başlat
+
     try {
-        let constraints = {
-            video: { 
-                facingMode: currentFacingMode, 
-                width: { ideal: 640 }, 
-                height: { ideal: 480 } 
-            },
-            audio: isBabyMode
-        };
-        
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+        });
         vid.srcObject = localStream;
         vid.muted = true;
-        
-        // Eğer bebek modu aktifse, ses/hareket izleyicilerini de yeni akışa bağlayalım
-        if (isBabyMode) {
-            startAudioMonitoring(localStream);
-        }
-        
-        console.log("Kamera başarıyla çevrildi.");
-            
-        // Eğer aktif bir izleyici varsa yeni stream ile aramayı yenileyelim (Donmayı önlemek için)
+
         if (conn && conn.open) {
-            console.log("İzleyiciye yeni akış gönderiliyor...");
-            if (call) {
-                try { call.close(); } catch(err) {}
-            }
+            if (call) { try { call.close(); } catch(err) {} }
             call = peer.call(conn.peer, localStream);
         }
     } catch (e) {
-        console.error("Kamera çevrilirken hata oluştu:", e);
-        // Hata durumunda diğer yönü dene
+        console.error("Kamera çevrilemedi:", e);
         currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
         updateMirroring();
-        alert("Kamera çevrilemedi: " + e.message);
     }
 }
 
-// Buton dinleyicilerini bağla
 const btnFlipCamera = document.getElementById('btnFlipCamera');
 if (btnFlipCamera) btnFlipCamera.addEventListener('click', flipCamera);
 
-const btnFlipCameraBaby = document.getElementById('btnFlipCameraBaby');
-if (btnFlipCameraBaby) btnFlipCameraBaby.addEventListener('click', flipCamera);
+// =================== HEDEF KİLİTLEME & KİLİT ÇÖZME ===================
+function unlockTarget(notifyPeer = true) {
+    if (!lockedTarget) return;
+    lockedTarget = null;
+    btnQuickUnlock.style.display = 'none';
+    targetStatusText.innerText = "🎯 Hedefe dokunarak kilitleyin";
+    dismissAlert();
 
-// =================== ÇİZİM VE İZLEYİCİYE GÖNDERİM DÖNGÜSÜ ===================
-let lastSendTime = 0;
+    if (notifyPeer && conn && conn.open) {
+        conn.send({ type: 'target_unlocked' });
+    }
+}
 
-function drawLoop() {
-    if (!isCamera) return;
-    
-    if (vid.readyState >= 4) {
-        if (cvs.width !== vid.videoWidth && vid.videoWidth > 0) {
-            cvs.width = vid.videoWidth;
-            cvs.height = vid.videoHeight;
+btnQuickUnlock.addEventListener('click', () => unlockTarget(true));
+
+// İki kutu arasındaki IoU (Kesişim / Birleşim Oranı)
+function computeIoU(b1, b2) {
+    const xA = Math.max(b1[0], b2[0]);
+    const yA = Math.max(b1[1], b2[1]);
+    const xB = Math.min(b1[0] + b1[2], b2[0] + b2[2]);
+    const yB = Math.min(b1[1] + b1[3], b2[1] + b2[3]);
+
+    const interArea = Math.max(0, xB - xA) * Math.max(0, yB - yA);
+    const box1Area = b1[2] * b1[3];
+    const box2Area = b2[2] * b2[3];
+
+    return interArea / (box1Area + box2Area - interArea + 0.0001);
+}
+
+// Ekrana tıklandığında hedef kilitleme
+function handleCanvasClick(clientX, clientY) {
+    initAudio();
+    const rect = cvs.getBoundingClientRect();
+    const scaleX = cvs.width / rect.width;
+    const scaleY = cvs.height / rect.height;
+
+    // Tıklanan gerçek canvas koordinatı
+    let clickX = (clientX - rect.left) * scaleX;
+    let clickY = (clientY - rect.top) * scaleY;
+
+    // Ön kamera açıksa ve aynalama varsa X eksenini ters çevir
+    if (currentFacingMode === 'user') {
+        clickX = cvs.width - clickX;
+    }
+
+    // 1. Tıklanan noktanın içinde kaldığı bir AI tespiti var mı?
+    let matched = null;
+    let minDistance = Infinity;
+
+    for (const det of currentDetections) {
+        const [x, y, w, h] = det.bbox;
+        if (clickX >= x && clickX <= x + w && clickY >= y && clickY <= y + h) {
+            matched = det;
+            break;
         }
+        // İçinde değilse en yakın nesnenin merkezine mesafeyi kontrol et
+        const centerX = x + w / 2;
+        const centerY = y + h / 2;
+        const dist = Math.hypot(clickX - centerX, clickY - centerY);
+        if (dist < minDistance && dist < 120 * scaleX) {
+            minDistance = dist;
+            matched = det;
+        }
+    }
 
-        ctx.clearRect(0, 0, cvs.width, cvs.height);
-        
-        const now = Date.now();
-        if (conn && conn.open && now - lastSendTime > 200) {
-            lastSendTime = now;
+    if (matched) {
+        const trName = LABELS_TR[matched.class] || matched.class;
+        lockedTarget = {
+            class: matched.class,
+            label: trName,
+            bbox: [...matched.bbox],
+            score: matched.score,
+            lastSeen: Date.now(),
+            lost: false
+        };
+        playLockBeep();
+        targetStatusText.innerText = `🔒 KİLİTLİ: ${trName}`;
+        btnQuickUnlock.style.display = 'inline-block';
+        dismissAlert();
+
+        if (conn && conn.open) {
             conn.send({
-                type: 'ping',
-                isBabyMode: isBabyMode
+                type: 'target_locked',
+                target: {
+                    class: matched.class,
+                    label: trName,
+                    bbox: matched.bbox,
+                    score: matched.score
+                }
+            });
+        }
+    } else {
+        // Tıklanan yerde hazır nesne yoksa serbest hedef kutusu oluştur
+        const boxSize = Math.min(cvs.width, cvs.height) * 0.22;
+        const bbox = [
+            Math.max(0, clickX - boxSize / 2),
+            Math.max(0, clickY - boxSize / 2),
+            boxSize,
+            boxSize
+        ];
+        lockedTarget = {
+            class: 'custom',
+            label: 'Özel Hedef',
+            bbox: bbox,
+            score: 1.0,
+            lastSeen: Date.now(),
+            lost: false
+        };
+        playLockBeep();
+        targetStatusText.innerText = `🔒 KİLİTLİ: Özel Hedef`;
+        btnQuickUnlock.style.display = 'inline-block';
+        dismissAlert();
+
+        if (conn && conn.open) {
+            conn.send({
+                type: 'target_locked',
+                target: lockedTarget
             });
         }
     }
-    requestAnimationFrame(drawLoop);
 }
 
-// =================== ALARM SİSTEMİ ===================
+cvs.addEventListener('pointerdown', (e) => {
+    handleCanvasClick(e.clientX, e.clientY);
+});
 
-function triggerAlert(type, message) {
-    if (isAlerting) return;
-    isAlerting = true;
-    
-    const icon = document.getElementById('alert-icon');
-    const title = document.getElementById('alert-title');
-    const msg = document.getElementById('alert-msg');
-    
-    if (icon) icon.innerText = type === 'sound' ? '👶🔊' : '👶🚼';
-    if (title) title.innerText = 'NURSENA CAM UYARI';
-    if (msg) msg.innerText = message;
-    
-    alertBox.style.display = 'flex';
-    
-    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
-    vibInt = setInterval(() => {
-        if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
-    }, 1500);
-}
+// =================== YAPAY ZEKA TESPİT VE TAKİP DÖNGÜSÜ ===================
+async function runAiDetection() {
+    if (!isCamera || !aiModel || vid.readyState < 2 || isDetecting) return;
+    isDetecting = true;
 
-function clearAlertDisplay() {
-    if (!isAlerting) return;
-    isAlerting = false;
-    alertBox.style.display = 'none';
-    if (vibInt) {
-        clearInterval(vibInt);
-        vibInt = null;
+    try {
+        const predictions = await aiModel.detect(vid);
+        currentDetections = predictions;
+
+        if (lockedTarget) {
+            let bestMatch = null;
+            let highestIoU = 0;
+            const prevCenter = [
+                lockedTarget.bbox[0] + lockedTarget.bbox[2] / 2,
+                lockedTarget.bbox[1] + lockedTarget.bbox[3] / 2
+            ];
+
+            // Önce aynı sınıfa ve en yüksek örtüşmeye/yakınlığa sahip tespiti ara
+            for (const p of predictions) {
+                const iou = computeIoU(lockedTarget.bbox, p.bbox);
+                const curCenter = [p.bbox[0] + p.bbox[2] / 2, p.bbox[1] + p.bbox[3] / 2];
+                const dist = Math.hypot(prevCenter[0] - curCenter[0], prevCenter[1] - curCenter[1]);
+
+                if (p.class === lockedTarget.class) {
+                    if (iou > highestIoU || (dist < 150 && highestIoU < 0.2)) {
+                        highestIoU = iou;
+                        bestMatch = p;
+                    }
+                } else if (lockedTarget.class === 'custom' && iou > 0.25) {
+                    if (iou > highestIoU) {
+                        highestIoU = iou;
+                        bestMatch = p;
+                    }
+                }
+            }
+
+            if (bestMatch) {
+                // Hedef başarıyla bulundu ve takip ediliyor
+                lockedTarget.bbox = bestMatch.bbox;
+                lockedTarget.score = bestMatch.score;
+                lockedTarget.lastSeen = Date.now();
+
+                if (lockedTarget.lost) {
+                    // Hedef tekrar kadraja girdi!
+                    lockedTarget.lost = false;
+                    targetStatusText.innerText = `🔒 KİLİTLİ: ${lockedTarget.label}`;
+                    dismissAlert();
+                }
+            } else {
+                // Hedef son 1.5 saniyedir tespit edilemediyse ALARM VER!
+                const now = Date.now();
+                if (now - lockedTarget.lastSeen > 1500) {
+                    if (!lockedTarget.lost) {
+                        lockedTarget.lost = true;
+                        targetStatusText.innerText = `🚨 KAYIP: ${lockedTarget.label} (KADRAJDAN ÇIKTI!)`;
+                        triggerTargetLostAlert(lockedTarget.label);
+                    }
+                }
+            }
+
+            // İzleyiciye senkron hedef durumu ilet
+            if (conn && conn.open) {
+                conn.send({
+                    type: 'tracking_update',
+                    target: lockedTarget,
+                    videoW: vid.videoWidth,
+                    videoH: vid.videoHeight
+                });
+            }
+        }
+    } catch (err) {
+        console.warn("AI tespit hatası:", err);
+    } finally {
+        isDetecting = false;
     }
 }
 
-const btnDismissAlert = document.getElementById('btnDismissAlert');
-if (btnDismissAlert) {
-    btnDismissAlert.onclick = () => {
-        clearAlertDisplay();
-        if (conn && conn.open) conn.send({ type: 'baby_alert_dismiss' });
-    };
+// =================== FÜTÜRİSTİK SİBER HEDEF NİŞANGAH ÇİZİMİ ===================
+function drawFuturisticCrosshair(x, y, w, h, isLost, label, score) {
+    const color = isLost ? '#ff0055' : '#00ffff';
+    const corner = Math.min(w, h) * 0.25;
+
+    ctx.save();
+    ctx.lineWidth = isLost ? 3 : 2.5;
+    ctx.strokeStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+
+    // 4 Köşe L Çizgileri
+    // Sol Üst
+    ctx.beginPath();
+    ctx.moveTo(x, y + corner);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + corner, y);
+    ctx.stroke();
+
+    // Sağ Üst
+    ctx.beginPath();
+    ctx.moveTo(x + w - corner, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + corner);
+    ctx.stroke();
+
+    // Sol Alt
+    ctx.beginPath();
+    ctx.moveTo(x, y + h - corner);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(x + corner, y + h);
+    ctx.stroke();
+
+    // Sağ Alt
+    ctx.beginPath();
+    ctx.moveTo(x + w - corner, y + h);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x + w, y + h - corner);
+    ctx.stroke();
+
+    // Merkez Artı (+) İşareti
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const cSize = 10;
+    ctx.beginPath();
+    ctx.moveTo(cx - cSize, cy);
+    ctx.lineTo(cx + cSize, cy);
+    ctx.moveTo(cx, cy - cSize);
+    ctx.lineTo(cx, cy + cSize);
+    ctx.stroke();
+
+    // Hedef Bilgi Etiketi
+    ctx.fillStyle = isLost ? 'rgba(255, 0, 85, 0.85)' : 'rgba(0, 255, 255, 0.85)';
+    const text = isLost 
+        ? `⚠️ [HEDEF KAYIP: ${label.toUpperCase()}]` 
+        : `🔒 [KİLİTLİ: ${label.toUpperCase()} %${Math.round((score || 1) * 100)}]`;
+    
+    ctx.font = 'bold 12px "Outfit", sans-serif';
+    const textWidth = ctx.measureText(text).width;
+    const tagH = 20;
+    const tagY = Math.max(0, y - tagH - 4);
+
+    ctx.fillRect(x, tagY, textWidth + 14, tagH);
+
+    ctx.fillStyle = '#000';
+    ctx.fillText(text, x + 7, tagY + 14);
+
+    ctx.restore();
 }
 
-document.getElementById('btnCam').addEventListener('click', () => startCamera(false));
-document.getElementById('btnBaby').addEventListener('click', () => startCamera(true));
+// =================== ÇİZİM VE RENDER DÖNGÜSÜ ===================
+function drawLoop() {
+    if (!isCamera) return;
 
-async function startCamera(babyMode) {
+    if (vid.readyState >= 2) {
+        if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+            cvs.width = vid.videoWidth || 640;
+            cvs.height = vid.videoHeight || 480;
+        }
+
+        ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+        // Yapay zekanın algıladığı diğer nesneleri ince çerçeveyle göster
+        if (!lockedTarget) {
+            for (const det of currentDetections) {
+                const [x, y, w, h] = det.bbox;
+                const trName = LABELS_TR[det.class] || det.class;
+
+                ctx.save();
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.35)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(x, y, w, h);
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                const tag = `${trName} %${Math.round(det.score * 100)}`;
+                ctx.font = '11px "Outfit", sans-serif';
+                const tw = ctx.measureText(tag).width;
+                ctx.fillRect(x, Math.max(0, y - 16), tw + 8, 16);
+
+                ctx.fillStyle = '#00ffff';
+                ctx.fillText(tag, x + 4, Math.max(12, y - 4));
+                ctx.restore();
+            }
+        }
+
+        // Kilitli hedefi fütüristik nişangah ile çiz
+        if (lockedTarget) {
+            const [x, y, w, h] = lockedTarget.bbox;
+            drawFuturisticCrosshair(x, y, w, h, lockedTarget.lost, lockedTarget.label, lockedTarget.score);
+        }
+    }
+
+    requestAnimationFrame(drawLoop);
+}
+
+// Düzenli aralıklarla AI tespitini tetikle (120ms)
+setInterval(() => {
+    if (isCamera) runAiDetection();
+}, 120);
+
+// =================== KAMERA BAŞLATMA ===================
+document.getElementById('btnCam').addEventListener('click', startCamera);
+
+async function startCamera() {
     const usernameInput = document.getElementById('username');
     const rawUsername = usernameInput ? usernameInput.value.trim() : '';
     if (!rawUsername) {
@@ -171,91 +631,50 @@ async function startCamera(babyMode) {
     }
     const cleanUsername = rawUsername.replace(/[^0-9]/g, '');
     if (cleanUsername.length !== 5) {
-        alert('Şifre tam olarak 5 haneli ve sadece rakamlardan oluşmalıdır!');
+        alert('Şifre tam olarak 5 haneli rakamlardan oluşmalıdır!');
         return;
     }
-    
+
     localStorage.setItem('nursena_username', rawUsername);
     precode = cleanUsername;
 
     isCamera = true;
-    isBabyMode = babyMode;
     document.getElementById('role').style.display = 'none';
     document.getElementById('main').style.display = 'block';
+    document.getElementById('cc').style.display = 'block';
+    document.getElementById('lc').style.display = 'none';
 
-    if (babyMode) {
-        document.getElementById('baby-controls').style.display = 'block';
-    } else {
-        document.getElementById('cc').style.display = 'block';
-        document.getElementById('lc').style.display = 'block';
-    }
-
-    // Aynalama ayarını başlangıçta ayarla
     updateMirroring();
 
     // Kamerayı aç
-    let audioEnabled = false;
     try {
         localStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: babyMode
+            video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
         });
-        audioEnabled = babyMode;
     } catch (e) {
-        if (babyMode) {
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
-                    audio: false
-                });
-                alert("Mikrofon izni reddedildi! Bebek kamerasında sadece hareket algılama çalışacak.");
-            } catch (fallbackErr) {
-                alert('Kamera açılamadı: ' + fallbackErr.name);
-                location.reload();
-                return;
-            }
-        } else {
-            alert('Kamera açılamadı: ' + e.name);
-            location.reload();
-            return;
-        }
+        alert('Kamera açılamadı: ' + e.name);
+        location.reload();
+        return;
     }
 
     vid.srcObject = localStream;
     vid.muted = true;
-    
-    if (babyMode) {
-        if (audioEnabled) startAudioMonitoring(localStream);
-        else document.getElementById('baby-sound').innerText = 'Ses: KAPALI';
-        
-        startMotionMonitoring();
-    }
 
-    // Stealth (Karartma) Modu Butonu
+    // Yapay Zeka Modelini Başlat
+    loadAI();
+
+    // Ekranı Karart (Gizli Mod) Butonu
     const stealthLogic = () => {
         document.getElementById('stealth').style.display = 'flex';
         document.getElementById('stealth-pin').value = '';
         document.getElementById('stealth-ui').style.display = 'none';
     };
-    
     document.getElementById('btnHide').onclick = stealthLogic;
-    const btnHideBaby = document.getElementById('btnHideBaby');
-    if (btnHideBaby) btnHideBaby.onclick = stealthLogic;
-
-    // Geri Dön butonu güncellendi (Kamerayı kapatıp ana menüye döner)
-    const backToMainLogic = () => {
-        sessionStorage.clear();
-        stopCamera();
-        location.reload();
-    };
-    
-    document.getElementById('btnBackBaby').onclick = backToMainLogic;
-    const btnBackMain = document.getElementById('btnBackMain');
-    if (btnBackMain) btnBackMain.onclick = backToMainLogic;
 
     // Simsiyah ekrana tıklayınca şifre sorma alanını aç
     document.getElementById('stealth').onclick = (e) => {
-        if(e.target.id === 'stealth') {
+        if (e.target.id === 'stealth') {
             document.getElementById('stealth-ui').style.display = 'flex';
             document.getElementById('stealth-pin').focus();
         }
@@ -264,7 +683,7 @@ async function startCamera(babyMode) {
     // Şifre kontrol tuşu (7693)
     document.getElementById('stealth-unlock').onclick = () => {
         if (document.getElementById('stealth-pin').value === '7693') {
-            document.getElementById('stealth').style.display = 'none'; 
+            document.getElementById('stealth').style.display = 'none';
             document.getElementById('stealth-ui').style.display = 'none';
         } else {
             alert('Yanlış Şifre!');
@@ -273,76 +692,19 @@ async function startCamera(babyMode) {
         }
     };
 
-    // Filtre Ayarları
-    const setFilter = (filterName) => {
-        currentFilter = filterName;
-        vid.className = 'filter-' + filterName;
-        cvs.className = 'filter-' + filterName;
-        // Aynalamayı korumak için sınıfı tekrar kontrol et
-        updateMirroring();
-        
-        if (conn && conn.open) {
-            conn.send({ type: 'set_filter', filter: filterName });
-        }
-    };
+    // Sağ üst arayüz gizle/göster butonu
+    setupToggleButton();
 
-    document.getElementById('btnThermal').onclick = () => {
-        setFilter(currentFilter === 'thermal' ? 'none' : 'thermal');
-    };
-
-    document.getElementById('btnNight').onclick = () => {
-        setFilter(currentFilter === 'night' ? 'none' : 'night');
-    };
-
-    // UI Gizle/Göster Butonu (Sağ üst sabit göz butonu)
-    const container = document.getElementById('controls-container');
-    const bar = document.getElementById('bar');
-    const btn = document.getElementById('btnToggleUI');
-    
-    container.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-    container.style.maxHeight = '500px';
-    container.style.opacity = '1';
-    container.style.overflow = 'hidden';
-    container.style.transform = 'scale(1)';
-    
-    bar.style.transition = 'all 0.4s ease';
-    
-    // btnToggleUI dairesel bir buton olduğu için içerisindeki simge 👁️ olarak kalır.
-    btn.style.display = 'flex';
-    btn.style.opacity = '1';
-    let uiHidden = false;
-    btn.onclick = () => {
-        uiHidden = !uiHidden;
-        if(uiHidden) {
-            container.style.maxHeight = '0px';
-            container.style.opacity = '0';
-            container.style.pointerEvents = 'none';
-            container.style.transform = 'scale(0.95)';
-            bar.style.opacity = '0';
-            bar.style.pointerEvents = 'none';
-            btn.style.opacity = '0.5';
-        } else {
-            container.style.maxHeight = '500px';
-            container.style.opacity = '1';
-            container.style.pointerEvents = 'auto';
-            container.style.transform = 'scale(1)';
-            bar.style.opacity = '1';
-            bar.style.pointerEvents = 'auto';
-            btn.style.opacity = '1';
-        }
-    };
-
-    // Kamerayı başlatırken Peer nesnesi oluştur
+    // Peer nesnesi oluştur
     if (prepeer) {
         try { prepeer.destroy(); } catch(e) {}
     }
-    console.log("Kamera Peer nesnesi oluşturuluyor. İsim:", precode);
     prepeer = new Peer('phtrck-' + precode, { debug: 0 });
-    
+
     prepeer.on('error', (err) => {
         console.error("Peer hatası:", err);
         if (err.type === 'unavailable-id') {
-            alert('Bu kullanıcı adı şu an kullanımda! Lütfen başka bir isim girin.');
+            alert('Bu şifre şu an kullanımda! Lütfen başka bir 5 haneli şifre girin.');
             location.reload();
         } else {
             cs.innerText = 'Hata: ' + err.type;
@@ -350,13 +712,7 @@ async function startCamera(babyMode) {
         }
     });
 
-    const displayName = document.getElementById('username') ? document.getElementById('username').value.trim() : precode;
-    if (babyMode) {
-        document.getElementById('mc-baby').innerText = displayName;
-    } else {
-        document.getElementById('mc').innerText = displayName;
-    }
-
+    document.getElementById('mc').innerText = precode;
     peer = prepeer;
 
     const setupHost = () => {
@@ -375,33 +731,37 @@ async function startCamera(babyMode) {
     peer.on('connection', (c) => {
         conn = c;
         cs.innerText = 'İzleyici bağlandı!';
-        if (babyMode) conn.send({ type: 'mode_baby' });
-        
+
         c.on('data', (d) => {
             if (d.type === 'viewer_ready') {
                 peer.call(c.peer, localStream);
-            } else if (d.type === 'baby_alert_dismiss') {
-                clearAlertDisplay();
+            } else if (d.type === 'tap_lock') {
+                // İzleyici de ekrana dokunarak hedef kilitleyebilir
+                const x = d.xRatio * cvs.width;
+                const y = d.yRatio * cvs.height;
+                handleCanvasClick(x, y);
+            } else if (d.type === 'unlock_request') {
+                unlockTarget(false);
+            } else if (d.type === 'alert_dismissed') {
+                dismissAlert();
             }
         });
-        
-        c.on('close', () => { 
-            cs.innerText = 'İzleyici ayrıldı'; 
+
+        c.on('close', () => {
+            cs.innerText = 'İzleyici ayrıldı';
             cp.className = 'p';
         });
-        
+
         c.on('error', (err) => {
-            console.error('Bağlantı hatası:', err);
-            cs.innerText = 'Bağlantı koptu (Hata)';
+            cs.innerText = 'Bağlantı koptu';
             cp.className = 'p';
         });
     });
 }
 
 // =================== İZLEYİCİ MODU ===================
-
 document.getElementById('btnView').addEventListener('click', () => {
-    if(prepeer && !prepeer.destroyed) prepeer.destroy();
+    if (prepeer && !prepeer.destroyed) prepeer.destroy();
     document.getElementById('role').style.display = 'none';
     document.getElementById('vs').style.display = 'flex';
 });
@@ -411,78 +771,48 @@ document.getElementById('btnConn').addEventListener('click', () => {
     const code = rawCode.replace(/[^0-9]/g, '');
     if (code.length !== 5) { alert('Lütfen 5 haneli şifreyi girin!'); return; }
 
-    sessionStorage.setItem('nursena_role', 'viewer');
-    sessionStorage.setItem('nursena_viewer_code', code);
+    initAudio();
+
     document.getElementById('vs').style.display = 'none';
     document.getElementById('main').style.display = 'block';
     document.getElementById('lc').style.display = 'block';
+    document.getElementById('cc').style.display = 'none';
+
     isCamera = false;
     vid.muted = true;
     cs.innerText = 'Bağlanılıyor...';
     as_.innerText = 'Görüntü bekleniyor';
     cp.className = 'p';
 
+    setupToggleButton();
+
     peer = new Peer({ debug: 0 });
 
     peer.on('open', () => {
         conn = peer.connect('phtrck-' + code);
-        
+
         conn.on('open', () => {
-            cs.innerText = 'Bağlandı!';
+            cs.innerText = 'Kameraya Bağlandı!';
             cp.className = 'p g';
-            const container = document.getElementById('controls-container');
-            const bar = document.getElementById('bar');
-            const btn = document.getElementById('btnToggleUI');
-            
-            container.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-            container.style.maxHeight = '500px';
-            container.style.opacity = '1';
-            container.style.overflow = 'hidden';
-            container.style.transform = 'scale(1)';
-            
-            bar.style.transition = 'all 0.4s ease';
-            
-            btn.style.display = 'flex';
-            btn.style.opacity = '1';
-            let uiHidden = false;
-            btn.onclick = () => {
-                uiHidden = !uiHidden;
-                if(uiHidden) {
-                    container.style.maxHeight = '0px';
-                    container.style.opacity = '0';
-                    container.style.pointerEvents = 'none';
-                    container.style.transform = 'scale(0.95)';
-                    bar.style.opacity = '0';
-                    bar.style.pointerEvents = 'none';
-                    btn.style.opacity = '0.5';
-                } else {
-                    container.style.maxHeight = '500px';
-                    container.style.opacity = '1';
-                    container.style.pointerEvents = 'auto';
-                    container.style.transform = 'scale(1)';
-                    bar.style.opacity = '1';
-                    bar.style.pointerEvents = 'auto';
-                    btn.style.opacity = '1';
-                }
-            };
-            
+            as_.innerText = 'CANLI İZLENİYOR';
+            targetStatusText.innerText = '🎯 Ekrana dokunarak hedef kilitleyebilirsiniz';
+
             conn.send({ type: 'viewer_ready' });
-            viewerDraw();
+            viewerDrawLoop();
         });
-        
+
         conn.on('data', handleViewerData);
-        
+
         conn.on('close', () => {
             cs.innerText = 'Bağlantı koptu!';
             cp.className = 'p';
-            clearAlertDisplay();
-            alert('Bağlantı koptu! Ana menüye dönülüyor.');
+            dismissAlert();
+            alert('Kamera bağlantısı kapandı! Ana menüye dönülüyor.');
             location.reload();
         });
-        
+
         conn.on('error', (err) => {
-            console.error("Bağlantı hatası:", err);
-            alert("Bağlantıda bir hata oluştu!");
+            alert('Bağlantıda bir hata oluştu!');
             location.reload();
         });
     });
@@ -493,20 +823,15 @@ document.getElementById('btnConn').addEventListener('click', () => {
         ic.on('stream', (rs) => {
             if (!vid.srcObject) {
                 vid.srcObject = rs;
-                as_.innerText = '✅ Canlı izleniyor';
-                as_.style.color = '#4CAF50';
+                as_.innerText = '✅ Canlı İzleniyor';
+                as_.style.color = '#00ffff';
             }
-        });
-        
-        ic.on('close', () => {
-            console.log("Görüntü akışı kapandı");
         });
     });
 
     peer.on('error', (e) => {
-        console.error("PeerJS Hatası:", e);
         if (e.type === 'peer-unavailable') {
-            alert('Kamera bulunamadı! Kodu doğru girdiğinizden emin olun.');
+            alert('Kamera bulunamadı! 5 haneli şifreyi doğru girdiğinizden emin olun.');
         } else {
             alert('Bağlantı kurulamadı: ' + e.type);
         }
@@ -514,224 +839,124 @@ document.getElementById('btnConn').addEventListener('click', () => {
     });
 });
 
-// =================== İZLEYİCİ VERİ HESAPLAMALARI ===================
-
+// İzleyici veri dinleyicisi
+let viewerLockedTarget = null;
 function handleViewerData(d) {
-    if (d.type === 'mode_baby') {
-        isBabyMode = true;
-        document.getElementById('lc').style.display = 'block';
-        document.getElementById('as').innerText = '👶 BEBEK İZLENİYOR';
-        document.getElementById('as').style.color = '#ff9a9e';
-        document.getElementById('btnToggleUI').style.display = 'block';
-    }
-    else if (d.type === 'baby_alert') {
-        if (d.alert === 'sound_start' || d.alert === 'motion_start') {
-            const msgText = d.alert === 'sound_start' 
-                ? 'BEBEK SES ÇIKARIYOR / AĞLIYOR!' 
-                : 'BEBEK HAREKET ETTİ!';
-            triggerAlert(d.alert === 'sound_start' ? 'sound' : 'motion', msgText);
+    if (d.type === 'tracking_update') {
+        viewerLockedTarget = d.target;
+        if (viewerLockedTarget) {
+            btnQuickUnlock.style.display = 'inline-block';
+            if (viewerLockedTarget.lost) {
+                targetStatusText.innerText = `🚨 KAYIP: ${viewerLockedTarget.label}`;
+            } else {
+                targetStatusText.innerText = `🔒 KİLİTLİ: ${viewerLockedTarget.label}`;
+            }
+        } else {
+            btnQuickUnlock.style.display = 'none';
+            targetStatusText.innerText = '🎯 Ekrana dokunarak hedef kilitleyebilirsiniz';
         }
-    }
-    else if (d.type === 'baby_alert_dismiss') {
-        clearAlertDisplay();
-    }
-    else if (d.type === 'set_filter') {
-        vid.className = 'filter-' + d.filter;
-        cvs.className = 'filter-' + d.filter;
+    } else if (d.type === 'target_lost') {
+        triggerTargetLostAlert(d.targetLabel);
+    } else if (d.type === 'alert_dismissed') {
+        dismissAlert();
+    } else if (d.type === 'target_unlocked') {
+        viewerLockedTarget = null;
+        btnQuickUnlock.style.display = 'none';
+        targetStatusText.innerText = '🎯 Ekrana dokunarak hedef kilitleyebilirsiniz';
+        dismissAlert();
     }
 }
 
-function viewerDraw() {
+// İzleyici ekranı çizim döngüsü
+function viewerDrawLoop() {
     if (isCamera) return;
-    requestAnimationFrame(viewerDraw);
+
+    if (vid.readyState >= 2) {
+        if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+            cvs.width = vid.videoWidth || 640;
+            cvs.height = vid.videoHeight || 480;
+        }
+
+        ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+        if (viewerLockedTarget) {
+            const [x, y, w, h] = viewerLockedTarget.bbox;
+            drawFuturisticCrosshair(
+                x, y, w, h,
+                viewerLockedTarget.lost,
+                viewerLockedTarget.label,
+                viewerLockedTarget.score
+            );
+        }
+    }
+
+    requestAnimationFrame(viewerDrawLoop);
+}
+
+// İzleyici canvas tıklaması ile kameraya kilit isteği gönderme
+cvs.addEventListener('click', (e) => {
+    if (!isCamera && conn && conn.open) {
+        const rect = cvs.getBoundingClientRect();
+        const xRatio = (e.clientX - rect.left) / rect.width;
+        const yRatio = (e.clientY - rect.top) / rect.height;
+        conn.send({ type: 'tap_lock', xRatio, yRatio });
+    }
+});
+
+btnQuickUnlock.addEventListener('click', () => {
+    if (!isCamera && conn && conn.open) {
+        conn.send({ type: 'unlock_request' });
+        viewerLockedTarget = null;
+        btnQuickUnlock.style.display = 'none';
+        targetStatusText.innerText = '🎯 Ekrana dokunarak hedef kilitleyebilirsiniz';
+        dismissAlert();
+    }
+});
+
+// =================== ARAYÜZ GİZLE / GÖSTER GÖZ BUTONU ===================
+function setupToggleButton() {
+    const container = document.getElementById('controls-container');
+    const bar = document.getElementById('bar');
+    const btn = document.getElementById('btnToggleUI');
+
+    container.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+    container.style.maxHeight = '500px';
+    container.style.opacity = '1';
+
+    bar.style.transition = 'all 0.4s ease';
+
+    btn.style.display = 'flex';
+    btn.style.opacity = '1';
+    let uiHidden = false;
+
+    btn.onclick = () => {
+        uiHidden = !uiHidden;
+        if (uiHidden) {
+            container.style.maxHeight = '0px';
+            container.style.opacity = '0';
+            container.style.pointerEvents = 'none';
+            bar.style.opacity = '0';
+            bar.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+        } else {
+            container.style.maxHeight = '500px';
+            container.style.opacity = '1';
+            container.style.pointerEvents = 'auto';
+            bar.style.opacity = '1';
+            bar.style.pointerEvents = 'auto';
+            btn.style.opacity = '1';
+        }
+    };
 }
 
 let precode = '';
 let prepeer = null;
 
-// Hata durumunda prepeer'ı sıfırla
-if (prepeer) {
-    prepeer.on('error', (err) => {
-        console.error("Prepeer hatası:", err);
-        prepeer.destroy();
-    });
-}
-
 window.onbeforeunload = () => {
     stopCamera();
+    stopAlarmSound();
 };
 
-window.unlockTarget = () => {};
-
-// =================== BEBEK İZLEME - GELİŞTİRİLMİŞ ALGORİTMALAR ===================
-
-let babyAudioAlert = false;
-let babyMotionAlert = false;
-
-// 1. Geliştirilmiş Ses (Ağlama) Algılaması
-function startAudioMonitoring(stream) {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 1024;
-    source.connect(analyser);
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    const binWidth = audioContext.sampleRate / analyser.fftSize;
-    
-    // Ağlama Frekans Aralıkları (Temel: 350-550 Hz, Harmonik: 1000-2000 Hz, Kalın gürültüler: <150 Hz)
-    const lowEndBin = Math.round(150 / binWidth);
-    const babyStartBin = Math.round(350 / binWidth);
-    const babyEndBin = Math.round(550 / binWidth);
-    const harmonicStartBin = Math.round(1000 / binWidth);
-    const harmonicEndBin = Math.round(2000 / binWidth);
-    
-    let cryMatchBuffer = [];
-    const BUFFER_SIZE = 15; // 1.5 saniye analiz penceresi
-    
-    function monitor() {
-        if (!isBabyMode || !localStream) {
-            audioContext.close();
-            return;
-        }
-        analyser.getByteFrequencyData(dataArray);
-        
-        let lowSum = 0, lowCount = 0;
-        for (let i = 0; i <= lowEndBin; i++) {
-            lowSum += dataArray[i];
-            lowCount++;
-        }
-        const lowAvg = lowCount > 0 ? lowSum / lowCount : 1;
-
-        let babySum = 0, babyCount = 0;
-        for (let i = babyStartBin; i <= babyEndBin; i++) {
-            babySum += dataArray[i];
-            babyCount++;
-        }
-        const babyAvg = babyCount > 0 ? babySum / babyCount : 0;
-        
-        let harmonicSum = 0, harmonicCount = 0;
-        for (let i = harmonicStartBin; i <= harmonicEndBin; i++) {
-            harmonicSum += dataArray[i];
-            harmonicCount++;
-        }
-        const harmonicAvg = harmonicCount > 0 ? harmonicSum / harmonicCount : 0;
-        
-        let totalSum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            totalSum += dataArray[i];
-        }
-        const totalAvg = totalSum / dataArray.length;
-
-        // İYİLEŞTİRİLMİŞ BEBEK AĞLAMA ŞARTLARI:
-        const isCryPattern = (babyAvg > 20) && (babyAvg > lowAvg * 1.25) && (harmonicAvg > 8) && (totalAvg > 12);
-        
-        cryMatchBuffer.push(isCryPattern);
-        if (cryMatchBuffer.length > BUFFER_SIZE) {
-            cryMatchBuffer.shift();
-        }
-        
-        const cryMatches = cryMatchBuffer.filter(Boolean).length;
-        const cryRatio = cryMatches / BUFFER_SIZE;
-        
-        if (cryMatchBuffer.length >= 10 && cryRatio > 0.6) {
-            if (!babyAudioAlert) {
-                babyAudioAlert = true;
-                document.getElementById('baby-sound').innerText = 'Ses: 🔴 AĞLIYOR!';
-                document.getElementById('baby-sound').style.background = 'rgba(255,0,0,0.5)';
-                
-                triggerAlert('sound', 'BEBEK SES ÇIKARIYOR / AĞLIYOR!');
-                if (conn && conn.open) conn.send({ type: 'baby_alert', alert: 'sound_start' });
-            }
-        } else {
-            if (babyAudioAlert && cryRatio < 0.2) {
-                babyAudioAlert = false;
-                document.getElementById('baby-sound').innerText = 'Ses: 🟢';
-                document.getElementById('baby-sound').style.background = 'rgba(0,0,0,0.5)';
-            }
-        }
-        
-        setTimeout(monitor, 100);
-    }
-    
-    setTimeout(monitor, 200);
-}
-
-// 2. Geliştirilmiş Grid-Tabanlı ve Filtreli Hareket Algılaması
-function startMotionMonitoring() {
-    const motionCanvas = document.createElement('canvas');
-    const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
-    let prevFrame = null;
-    
-    const width = 32;  
-    const height = 24; 
-    
-    setInterval(() => {
-        if (!isBabyMode || !vid.videoWidth || !localStream) return;
-        
-        motionCanvas.width = width;
-        motionCanvas.height = height;
-        motionCtx.drawImage(vid, 0, 0, width, height);
-        
-        const currentFrame = motionCtx.getImageData(0, 0, width, height).data;
-        
-        if (prevFrame) {
-            const gridRows = 6;
-            const gridCols = 8;
-            const cellW = 4;
-            const cellH = 4;
-            
-            let activeGridsCount = 0;
-            
-            for (let gy = 0; gy < gridRows; gy++) {
-                for (let gx = 0; gx < gridCols; gx++) {
-                    let changedPixelsInCell = 0;
-                    const totalPixelsInCell = cellW * cellH; // 16 piksel
-                    
-                    for (let cy = 0; cy < cellH; cy++) {
-                        for (let cx = 0; cx < cellW; cx++) {
-                            const px = gx * cellW + cx;
-                            const py = gy * cellH + cy;
-                            const idx = (py * width + px) * 4;
-                            
-                            const diffR = Math.abs(currentFrame[idx] - prevFrame[idx]);
-                            const diffG = Math.abs(currentFrame[idx + 1] - prevFrame[idx + 1]);
-                            const diffB = Math.abs(currentFrame[idx + 2] - prevFrame[idx + 2]);
-                            
-                            if ((diffR + diffG + diffB) > 55) {
-                                changedPixelsInCell++;
-                            }
-                        }
-                    }
-                    
-                    if (changedPixelsInCell / totalPixelsInCell > 0.20) {
-                        activeGridsCount++;
-                    }
-                }
-            }
-            
-            const isRealMotion = (activeGridsCount >= 1 && activeGridsCount <= 16);
-            
-            if (isRealMotion && !babyMotionAlert) { 
-                babyMotionAlert = true;
-                document.getElementById('baby-motion').innerText = 'Hareket: 🔴 HAREKET!';
-                document.getElementById('baby-motion').style.background = 'rgba(255,0,0,0.5)';
-                
-                triggerAlert('motion', 'BEBEK HAREKET ETTİ!');
-                if (conn && conn.open) conn.send({ type: 'baby_alert', alert: 'motion_start' });
-                
-                setTimeout(() => {
-                    babyMotionAlert = false;
-                    document.getElementById('baby-motion').innerText = 'Hareket: 🟢';
-                    document.getElementById('baby-motion').style.background = 'rgba(0,0,0,0.5)';
-                }, 4000);
-            }
-        }
-        
-        prevFrame = currentFrame;
-    }, 400);
-}
-
-// Sayfa yüklendiğinde son girilen kullanıcı adını kutuya otomatik doldur
 window.addEventListener('DOMContentLoaded', () => {
     const savedUser = localStorage.getItem('nursena_username');
     if (savedUser && document.getElementById('username')) {
