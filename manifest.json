@@ -1,11 +1,11 @@
 {
-    "name": "NURSENA CAM",
-    "short_name": "NURSENA CAM",
-    "description": "Yüksek performanslı bebek ve güvenlik kamerası",
+    "name": "CAM",
+    "short_name": "CAM",
+    "description": "Akıllı Hedef Takip ve Kamera Sistemi",
     "start_url": "./index.html",
     "display": "standalone",
-    "background_color": "#0b0c10",
-    "theme_color": "#111111",
+    "background_color": "#000000",
+    "theme_color": "#000000",
     "orientation": "portrait",
     "icons": [
         {

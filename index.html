@@ -5,171 +5,433 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NURSENA AI CAM - Akıllı Hedef Takip</title>
-    <meta name="theme-color" content="#0b0c10">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CAM</title>
+    <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3254/3254556.png">
 
     <!-- PeerJS WebRTC -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <!-- Yapay Zeka (TensorFlow.js & COCO-SSD Nesne Tanıma Modeli) -->
+    <!-- Yapay Zeka (TensorFlow.js & COCO-SSD) -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&display=swap');
-        :root { --p: #00ffff; --s: #ff0055; --bg: #0b0c10; --glass: rgba(20, 22, 30, 0.75); }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
-        body { background: var(--bg); color: #fff; text-align: center; overflow: hidden; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+        :root {
+            --bg: #000000;
+            --surface: rgba(28, 28, 30, 0.78);
+            --surface-elevated: rgba(44, 44, 46, 0.85);
+            --border: rgba(255, 255, 255, 0.12);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(235, 235, 245, 0.6);
+            --text-tertiary: rgba(235, 235, 245, 0.38);
+            --accent: #0071e3;
+            --danger: #ff453a;
+            --success: #30d158;
+            --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+        }
 
-        /* Glassmorphism & Arka Plan */
-        #role, #vs { min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 20px; padding-bottom: max(50px, env(safe-area-inset-bottom) + 20px); background: #0b0c10; position: relative; overflow: hidden; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: var(--font-stack);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text-primary);
+            text-align: center;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+            min-height: 100vh;
+        }
+
+        /* Apple Tarzı Görünüm & Bölümler */
+        #role, #vs {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 24px;
+            padding-bottom: max(40px, env(safe-area-inset-bottom) + 20px);
+            background: var(--bg);
+            position: relative;
+        }
 
         @media (min-width: 768px) {
-            #role, #vs { justify-content: center; align-items: flex-start; padding-left: 8%; padding-bottom: 20px; }
-            #role h1, #role p, #vs h2, #vs p { text-align: left; }
+            #role, #vs {
+                justify-content: center;
+                align-items: center;
+                padding-bottom: 24px;
+            }
         }
 
-        #role::after, #vs::after {
-            content: '';
+        /* Apple Translucent Kart */
+        .card {
+            background: var(--surface);
+            padding: 28px 24px;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 340px;
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 0.5px solid var(--border);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7);
+            position: relative;
+            z-index: 10;
+        }
+
+        .app-logo {
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            margin-bottom: 4px;
+            color: var(--text-primary);
+        }
+
+        .app-sub {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 400;
+            letter-spacing: -0.01em;
+            margin-bottom: 24px;
+        }
+
+        /* Apple Butonlar - Kesinlikle Gradient Yok */
+        .btn {
+            padding: 13px 18px;
+            font-size: 14px;
+            margin: 6px 0;
+            cursor: pointer;
+            border-radius: 14px;
+            border: none;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: transform 0.12s ease, opacity 0.12s ease, background 0.2s ease;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+            opacity: 0.82;
+        }
+
+        /* Beyaz Birincil Buton */
+        .btn-primary {
+            background: #ffffff;
+            color: #000000;
+        }
+
+        /* Translucent İkincil Buton */
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            border: 0.5px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .btn-danger {
+            background: rgba(255, 69, 58, 0.16);
+            color: var(--danger);
+            border: 0.5px solid rgba(255, 69, 58, 0.3);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+        }
+
+        .btn-ghost:hover {
+            color: var(--text-primary);
+        }
+
+        /* SVG İkon Yardımcısı */
+        .icon {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+            display: inline-block;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Apple Tarzı Şifre Kutusu */
+        .inp {
+            width: 100%;
+            padding: 14px;
+            font-size: 20px;
+            text-align: center;
+            font-weight: 600;
+            letter-spacing: 8px;
+            border-radius: 14px;
+            border: 0.5px solid var(--border);
+            background: rgba(0, 0, 0, 0.45);
+            color: #ffffff;
+            margin-bottom: 16px;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .inp:focus {
+            border-color: rgba(255, 255, 255, 0.4);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+        }
+
+        .inp::placeholder {
+            color: var(--text-tertiary);
+            letter-spacing: 2px;
+            font-size: 15px;
+        }
+
+        .code-box {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 16px;
+            border-radius: 16px;
+            margin: 12px 0 16px 0;
+            border: 0.5px solid var(--border);
+        }
+
+        .code-display {
+            font-size: 34px;
+            font-weight: 700;
+            letter-spacing: 8px;
+            color: #ffffff;
+            margin: 6px 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Apple Dynamic Banner / Alarm */
+        #alert {
+            display: none;
+            position: fixed;
+            top: max(20px, env(safe-area-inset-top) + 12px);
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 32px);
+            max-width: 380px;
+            padding: 18px 20px;
+            border-radius: 22px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(36, 12, 14, 0.94);
+            color: #ffffff;
+            z-index: 99999;
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 0.5px solid rgba(255, 69, 58, 0.4);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 69, 58, 0.2);
+            animation: apple-alert-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes apple-alert-in {
+            from { opacity: 0; transform: translate(-50%, -10px) scale(0.96); }
+            to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+        }
+
+        /* Ana Kamera Görüntüsü */
+        #main {
+            display: none;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+        }
+
+        .vc {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: url('bg.jpg') no-repeat center center;
-            background-size: cover;
-            opacity: 0.40;
             z-index: 1;
-            pointer-events: none;
-        }
-        #role::before, #vs::before {
-            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
-            background: radial-gradient(circle, rgba(0,255,255,0.06) 0%, transparent 50%);
-            animation: spin 30s linear infinite; pointer-events: none; z-index: 2;
-        }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-
-        .card {
-            background: var(--glass); padding: 24px 20px; border-radius: 20px; width: 100%; max-width: 340px;
-            backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 25px 50px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.05);
-            position: relative; z-index: 10;
         }
 
-        h1 {
-            font-size: 24px; font-weight: 900; letter-spacing: 1px; margin-bottom: 6px; text-transform: uppercase;
-            background: linear-gradient(90deg, #fff, var(--p)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 30px rgba(0,255,255,0.3);
+        video {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
         }
 
-        .btn {
-            padding: 13px; font-size: 13px; margin: 6px 0; cursor: pointer; border-radius: 12px; border: none;
-            font-weight: 700; width: 100%; color: #fff; display: flex; align-items: center; justify-content: center;
-            gap: 8px; transition: all 0.3s cubic-bezier(0.4,0,0.2,1); text-transform: uppercase; letter-spacing: 1px;
-            position: relative; overflow: hidden;
-        }
-        .btn::after {
-            content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transition: all 0.5s;
-        }
-        .btn:hover::after { left: 100%; }
-        .btn:active { transform: scale(0.96); }
-        .btn-g { background: linear-gradient(135deg, #00b4db, #0083b0); box-shadow: 0 6px 20px rgba(0, 180, 219, 0.35); }
-        .btn-b { background: linear-gradient(135deg, #8E2DE2, #4A00E0); box-shadow: 0 6px 20px rgba(74, 0, 224, 0.35); }
-        .btn-o { background: linear-gradient(135deg, var(--s), #c20042); box-shadow: 0 6px 20px rgba(255,0,85,0.35); }
-        .btn-warn { background: linear-gradient(135deg, #ff8c00, #e52d27); box-shadow: 0 6px 20px rgba(255, 140, 0, 0.35); }
-
-        .ibox {
-            background: rgba(0,0,0,0.4); padding: 16px; border-radius: 16px; margin: 12px 0;
-            border: 1px solid rgba(255,255,255,0.06); box-shadow: inset 0 4px 15px rgba(0,0,0,0.5);
-        }
-        .code {
-            font-size: 36px; font-weight: 900; letter-spacing: 8px; color: var(--p);
-            text-shadow: 0 0 20px rgba(0,255,255,0.6); margin: 8px 0; font-variant-numeric: tabular-nums;
-        }
-        .inp {
-            width: 100%; padding: 12px; font-size: 18px; text-align: center; font-weight: 900; letter-spacing: 6px;
-            border-radius: 12px; border: 1px solid rgba(0,255,255,0.3); background: rgba(0,0,0,0.55); color: var(--p);
-            margin-bottom: 12px; transition: all 0.3s; box-shadow: inset 0 4px 15px rgba(0,0,0,0.5); outline: none;
-        }
-        .inp:focus { border-color: var(--p); box-shadow: 0 0 20px rgba(0,255,255,0.4), inset 0 4px 15px rgba(0,0,0,0.5); }
-        .inp::placeholder { color: rgba(0,255,255,0.25); letter-spacing: 2px; }
-
-        /* Hedef Kadrajdan Çıktı / Alarm Paneli */
-        #alert {
-            display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 420px;
-            padding: 22px 20px; border-radius: 24px; flex-direction: column; align-items: center; justify-content: center;
-            background: rgba(220, 20, 60, 0.95); color: #fff; font-size: 20px; font-weight: 900; text-align: center;
-            z-index: 99999; backdrop-filter: blur(20px); border: 2px solid #ff3366; box-shadow: 0 10px 50px rgba(255, 0, 85, 0.7);
-            animation: pulse-alert 0.8s infinite alternate;
-        }
-        @keyframes pulse-alert {
-            from { background: rgba(200, 0, 40, 0.9); box-shadow: 0 10px 30px rgba(255, 0, 60, 0.5); }
-            to { background: rgba(255, 0, 70, 1); box-shadow: 0 10px 60px rgba(255, 0, 90, 0.9); transform: translateX(-50%) scale(1.02); }
-        }
-        #alert span#alert-icon { font-size: 44px; margin-bottom: 8px; animation: shake 0.5s infinite; display: inline-block; }
-        @keyframes shake {
-            0%, 100% { transform: translateX(0) scale(1); }
-            25% { transform: translateX(-6px) scale(1.1); }
-            75% { transform: translateX(6px) scale(1.1); }
+        canvas {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
+            z-index: 2;
+            cursor: crosshair;
         }
 
-        /* Ana Kamera Ekranı */
-        #main { display: none; height: 100vh; width: 100vw; position: relative; background: #000; overflow: hidden; }
-        .vc { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block; z-index: 2; cursor: crosshair; }
-
-        /* HUD & Bilgi Çubuğu */
+        /* Apple HUD Yapısı */
         #hud {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; pointer-events: none;
-            display: flex; flex-direction: column; justify-content: space-between; padding: 16px;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 20;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 16px;
+            padding-top: max(16px, env(safe-area-inset-top));
             padding-bottom: max(16px, env(safe-area-inset-bottom));
         }
+
+        /* Üst Durum Kapsülü (Pill) */
         #bar {
-            pointer-events: auto; background: var(--glass); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
-            border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px 18px; display: flex;
-            justify-content: space-between; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            margin-top: env(safe-area-inset-top);
+            pointer-events: auto;
+            background: var(--surface);
+            backdrop-filter: blur(35px) saturate(180%);
+            -webkit-backdrop-filter: blur(35px) saturate(180%);
+            border: 0.5px solid var(--border);
+            border-radius: 9999px;
+            padding: 10px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 440px;
+            margin: 0 auto;
+            width: 100%;
         }
-        #bar-left { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #ddd; }
-        #as { font-size: 13px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--p); text-shadow: 0 0 10px rgba(0,255,255,0.5); }
 
-        .p { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f44336; box-shadow: 0 0 10px #f44336; animation: pf 1.5s infinite; }
-        .p.g { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
-        @keyframes pf { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(0.8); } }
+        #bar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
 
-        /* Yapay Zeka Hedef Durum Çubuğu */
+        #as {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            transition: background 0.3s ease;
+        }
+
+        .status-dot.active {
+            background: var(--success);
+        }
+
+        /* Hedef Durum Kapsülü */
         #target-banner {
-            pointer-events: auto; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 14px; padding: 8px 14px;
-            margin: 8px auto 0 auto; max-width: 360px; font-size: 12px; font-weight: 700; color: #fff;
-            display: flex; align-items: center; justify-content: space-between; gap: 8px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.4); transition: all 0.3s ease;
+            pointer-events: auto;
+            background: var(--surface);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 0.5px solid var(--border);
+            border-radius: 9999px;
+            padding: 8px 16px;
+            margin: 10px auto 0 auto;
+            max-width: 360px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
         }
 
-        #controls-container { pointer-events: auto; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 380px; margin: 0 auto; }
+        #btnQuickUnlock {
+            display: none;
+            background: rgba(255, 255, 255, 0.15);
+            border: 0.5px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            border-radius: 9999px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        #btnQuickUnlock:active {
+            transform: scale(0.95);
+        }
+
+        /* Alt Kontroller */
+        #controls-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
+            pointer-events: none;
+        }
+
+        #controls-container {
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+        }
+
         .ctrl {
-            background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-            border: 1px solid rgba(255,255,255,0.1); border-radius: 22px; padding: 18px; text-align: center;
+            background: var(--surface);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 0.5px solid var(--border);
+            border-radius: 24px;
+            padding: 20px;
+            text-align: center;
             box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
         }
 
         /* Ekranı Karartma (Stealth / Gizli Mod) */
         #stealth {
-            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: #000; z-index: 99999; flex-direction: column; justify-content: center; align-items: center;
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #000000;
+            z-index: 99999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             cursor: pointer;
         }
+
         #stealth-ui {
-            display: none; flex-direction: column; align-items: center; padding: 26px;
-            background: rgba(18, 18, 22, 0.95); border-radius: 20px; border: 1px solid #333;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            padding: 28px 24px;
+            background: var(--surface-elevated);
+            border-radius: 24px;
+            border: 0.5px solid var(--border);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            width: 280px;
         }
 
-        .mirror { transform: scaleX(-1); }
+        .mirror {
+            transform: scaleX(-1);
+        }
     </style>
 </head>
 <body>
@@ -177,40 +439,60 @@
 <!-- GİZLİ SİYAH EKRAN (EKRANI KARART MODU) -->
 <div id="stealth">
     <div id="stealth-ui" onclick="event.stopPropagation()">
-        <p style="font-size:12px; color:rgba(255,255,255,0.6); margin-bottom:12px; font-weight:700;">EKRANI AÇMAK İÇİN ŞİFREYİ GİRİN</p>
-        <input type="password" id="stealth-pin" class="inp" placeholder="7693" maxlength="4" style="width:160px; background:#111; color:#00ffff; border:1px solid #444;" inputmode="numeric">
-        <button id="stealth-unlock" class="btn btn-g" style="max-width:160px;">KİLİDİ AÇ 🔓</button>
+        <p style="font-size:12px; color:var(--text-secondary); margin-bottom:14px; font-weight:500;">EKRANI AÇMAK İÇİN PIN GİRİN</p>
+        <input type="password" id="stealth-pin" class="inp" placeholder="••••" maxlength="4" style="width:140px; margin-bottom:14px;" inputmode="numeric">
+        <button id="stealth-unlock" class="btn btn-primary" style="max-width:140px;">Kilidi Aç</button>
     </div>
 </div>
 
-<!-- HEDEF KADRAJDAN ÇIKTI UYARISI / ALARM -->
+<!-- HEDEF KADRAJDAN ÇIKTI ALARMI -->
 <div id="alert">
-    <span id="alert-icon">🚨</span>
-    <span id="alert-title" style="font-size:22px; font-weight:900; letter-spacing:1px;">HEDEF KADRAJDAN ÇIKTI!</span>
-    <span id="alert-msg" style="font-size:15px; margin:8px 0; font-weight:600; opacity:0.95;">Kilitlenen nesne görüş alanından kayboldu!</span>
-    <button id="btnDismissAlert" style="margin-top:12px; background:#fff; color:#d00; border:none; border-radius:12px; padding:10px 22px; font-weight:900; font-size:14px; cursor:pointer; text-transform:uppercase; box-shadow:0 4px 15px rgba(0,0,0,0.3);">ALARMı KAPAT ❌</button>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <svg class="icon" style="color:var(--danger); width:20px; height:20px;" viewBox="0 0 24 24">
+            <path d="M12 2L1 21h22L12 2zm0 3.5L20 19H4L12 5.5zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/>
+        </svg>
+        <span id="alert-title" style="font-size:16px; font-weight:700; letter-spacing:-0.02em;">Hedef Kadrajdan Çıktı</span>
+    </div>
+    <span id="alert-msg" style="font-size:13px; margin:4px 0 14px 0; color:var(--text-secondary); font-weight:400;">Kilitlenen nesne görüş alanından ayrıldı.</span>
+    <button id="btnDismissAlert" class="btn btn-secondary" style="padding:10px 20px; font-size:13px; max-width:200px;">Alarmı Kapat</button>
 </div>
 
 <!-- ANA GİRİŞ MENÜSÜ -->
 <div id="role">
-    <h1>🎯 NURSENA AI CAM</h1>
-    <p style="color:rgba(255,255,255,0.6);font-size:11px;margin-bottom:18px;font-weight:500;">Yapay Zeka Destekli Akıllı Hedef Takip Sistemi</p>
     <div class="card">
-        <input type="text" id="username" class="inp" placeholder="Şifre (Örn: 12345)" maxlength="5" inputmode="numeric" style="letter-spacing: 5px; font-size: 16px; text-align: center; padding: 10px; margin-bottom: 12px;" autocomplete="off">
-        <button class="btn btn-g" id="btnCam"><span style="font-size:16px;">📸</span> KAMERA OL</button>
-        <div style="height:1px;background:linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);margin:10px 0"></div>
-        <button class="btn btn-b" id="btnView"><span style="font-size:16px;">👁️</span> İZLEYİCİ OL</button>
+        <h1 class="app-logo">CAM</h1>
+        <p class="app-sub">Akıllı Hedef Takip Sistemi</p>
+
+        <input type="text" id="username" class="inp" placeholder="12345" maxlength="5" inputmode="numeric" autocomplete="off">
+
+        <button class="btn btn-primary" id="btnCam">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M4 7h3l2-3h6l2 3h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm8 11a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0-2a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
+            </svg>
+            Kamera Ol
+        </button>
+
+        <div style="height:0.5px; background:var(--border); margin:12px 0;"></div>
+
+        <button class="btn btn-secondary" id="btnView">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+            </svg>
+            İzleyici Ol
+        </button>
     </div>
 </div>
 
 <!-- İZLEYİCİ BAĞLANTI FORMU -->
 <div id="vs" style="display:none">
     <div class="card">
-        <h2 style="font-size:18px;margin-bottom:8px;font-weight:900;">Kameraya Bağlan</h2>
-        <p style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:14px;">Kameranın 5 haneli şifresini girin</p>
-        <input type="text" id="jc" class="inp" placeholder="Şifre (Örn: 12345)" maxlength="5" inputmode="numeric" style="letter-spacing: 5px; font-size: 16px; text-align: center; padding: 10px; margin-bottom: 12px;" autocomplete="off">
-        <button class="btn btn-b" id="btnConn">BAĞLAN 🚀</button>
-        <button class="btn" style="background:#222; margin-top:8px;" onclick="sessionStorage.clear(); location.reload();">❌ ANA MENÜ</button>
+        <h2 style="font-size:20px; font-weight:700; margin-bottom:4px; letter-spacing:-0.03em;">Kameraya Bağlan</h2>
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:18px;">Kamerada belirlenen 5 haneli şifreyi girin</p>
+        
+        <input type="text" id="jc" class="inp" placeholder="12345" maxlength="5" inputmode="numeric" autocomplete="off">
+        
+        <button class="btn btn-primary" id="btnConn">Bağlan</button>
+        <button class="btn btn-ghost" style="margin-top:4px;" onclick="sessionStorage.clear(); location.reload();">Ana Menü</button>
     </div>
 </div>
 
@@ -221,48 +503,73 @@
         <canvas id="cvs"></canvas>
     </div>
 
-    <!-- SAĞ ÜST ARAYÜZ GİZLE / GÖSTER GÖZ BUTONU -->
-    <button id="btnToggleUI" style="position:absolute; top:20px; right:20px; width:44px; height:44px; border-radius:50%; background:var(--glass); border:1px solid rgba(255,255,255,0.2); color:#fff; font-size:18px; cursor:pointer; z-index:99999; display:none; align-items:center; justify-content:center; backdrop-filter:blur(10px); box-shadow:0 4px 15px rgba(0,0,0,0.4); pointer-events:auto; transition:all 0.3s ease;">👁️</button>
+    <!-- SAĞ ÜST ARAYÜZ GİZLE / GÖSTER BUTONU -->
+    <button id="btnToggleUI" style="position:absolute; top:max(16px, env(safe-area-inset-top)); right:16px; width:40px; height:40px; border-radius:50%; background:var(--surface); border:0.5px solid var(--border); color:#fff; cursor:pointer; z-index:99999; display:none; align-items:center; justify-content:center; backdrop-filter:blur(25px); pointer-events:auto; transition:all 0.2s ease;">
+        <svg class="icon" viewBox="0 0 24 24">
+            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+        </svg>
+    </button>
 
     <div id="hud">
         <div>
+            <!-- ÜST DURUM BİLGİ KAPSÜLÜ -->
             <div id="bar">
-                <div id="bar-left"><span class="p" id="cp"></span><span id="cs">Bağlantı Bekleniyor...</span></div>
-                <div id="as">YAPAY ZEKA AKTİF</div>
+                <div id="bar-left">
+                    <span class="status-dot" id="cp"></span>
+                    <span id="cs">Bağlantı Bekleniyor</span>
+                </div>
+                <div id="as">Yapay Zeka Hazır</div>
             </div>
 
-            <!-- HEDEF DURUM BİLGİ BANTİ -->
+            <!-- HEDEF DURUM BİLGİ KAPSÜLÜ -->
             <div id="target-banner">
-                <span id="target-status-text">🎯 Ekranda kilitlemek istediğiniz hedefe dokunun</span>
-                <button id="btnQuickUnlock" style="display:none; background:rgba(255,0,85,0.3); border:1px solid #ff0055; color:#fff; border-radius:8px; padding:4px 8px; font-size:11px; font-weight:700; cursor:pointer;">Kilidi Aç 🔓</button>
+                <span id="target-status-text">Hedefe dokunarak kilitleyin</span>
+                <button id="btnQuickUnlock">Kilidi Aç</button>
             </div>
         </div>
 
-        <div id="controls-wrapper" style="position:relative; width:100%; max-width:380px; margin:0 auto; pointer-events:none;">
+        <div id="controls-wrapper">
             <div id="controls-container">
                 <!-- KAMERA YAYIN KONTROLLERİ -->
                 <div id="cc" class="ctrl" style="display:none">
-                    <div class="ibox">
-                        <p style="font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:2px;text-transform:uppercase;font-weight:700;">BAĞLANTI KODU</p>
-                        <div class="code" id="mc">....</div>
-                        <p style="font-size:11px;color:#ffaa00;font-weight:500;">Diğer cihazda "İzleyici Ol" ile bu şifreyi girin.</p>
+                    <div class="code-box">
+                        <p style="font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px; font-weight:600;">Bağlantı Şifresi</p>
+                        <div class="code-display" id="mc">•••••</div>
+                        <p style="font-size:12px; color:var(--text-tertiary);">İzleyici cihazdan bu şifreyle bağlanın</p>
                     </div>
-                    <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
-                        <button id="btnHide" class="btn btn-g" style="padding:11px; font-size:12px;">👁️‍🗨️ EKRANI KARART</button>
-                        <button id="btnFlipCamera" class="btn" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2); padding:11px; font-size:12px;">🔄 KAMERAYI ÇEVİR</button>
-                        <button id="btnBackMain" class="btn" style="background:#222; padding:10px; font-size:11px; margin-top:4px;" onclick="location.reload()">❌ ANA MENÜ</button>
+
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <button id="btnHide" class="btn btn-secondary">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/>
+                            </svg>
+                            Ekranı Karart
+                        </button>
+                        
+                        <button id="btnFlipCamera" class="btn btn-secondary">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
+                            </svg>
+                            Kamerayı Çevir
+                        </button>
+                        
+                        <button id="btnBackMain" class="btn btn-ghost" onclick="location.reload()">
+                            Ana Menü
+                        </button>
                     </div>
                 </div>
 
                 <!-- İZLEYİCİ KONTROLLERİ -->
                 <div id="lc" class="ctrl" style="display:none">
-                    <button id="btnViewerBack" class="btn" style="background:#222; padding:11px; font-size:12px;" onclick="location.reload()">❌ ANA MENÜ</button>
+                    <button id="btnViewerBack" class="btn btn-secondary" onclick="location.reload()">
+                        Ana Menüye Dön
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<script type="module" src="app.js?v=60"></script>
+<script type="module" src="app.js?v=65"></script>
 </body>
 </html>
