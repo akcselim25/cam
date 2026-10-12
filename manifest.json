@@ -1,0 +1,17 @@
+{
+    "name": "NURSENA CAM",
+    "short_name": "NURSENA CAM",
+    "description": "Yüksek performanslı bebek ve güvenlik kamerası",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "background_color": "#0b0c10",
+    "theme_color": "#111111",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "https://cdn-icons-png.flaticon.com/512/3254/3254556.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
