@@ -303,85 +303,65 @@ function normBoxToScreenCoords(normBox) {
 // =================== KİŞİ VE HEDEF KİLİTLEME ===================
 function lockTargetAtNormCoords(normX, normY) {
     initAudio();
-    playHapticBeep();
 
-    let matched = null;
     let personMatch = null;
     let minDistance = Infinity;
 
-    // 1. Önce tıklanan noktanın içindeki kişileri (person) ara
+    // Sadece algılanan kişiler (person) taranır
     for (const det of currentDetections) {
+        if (det.class !== 'person') continue;
+
         const [x, y, w, h] = det.normBox;
         const inside = (normX >= x && normX <= x + w && normY >= y && normY <= y + h);
 
         if (inside) {
-            if (det.class === 'person') {
-                personMatch = det;
-                break;
-            } else if (!matched) {
-                matched = det;
-            }
+            personMatch = det;
+            break;
         }
 
-        // İçinde değilse en yakın kişiyi ara
         const cx = x + w / 2;
         const cy = y + h / 2;
         const dist = Math.hypot(normX - cx, normY - cy);
         if (dist < minDistance && dist < 0.22) {
             minDistance = dist;
-            if (det.class === 'person') personMatch = det;
-            else matched = det;
+            personMatch = det;
         }
     }
 
-    const selected = personMatch || matched;
-
-    if (selected) {
-        const trName = LABELS_TR[selected.class] || selected.class;
+    if (personMatch) {
+        playHapticBeep();
         lockedTarget = {
-            class: selected.class,
-            label: trName,
-            normBox: [...selected.normBox],
-            lerpBox: [...selected.normBox],
-            score: selected.score,
+            class: 'person',
+            label: 'Kişi',
+            normBox: [...personMatch.normBox],
+            lerpBox: [...personMatch.normBox],
+            score: personMatch.score,
             lastSeen: Date.now(),
             lost: false
         };
-        targetStatusText.innerText = `Kilitli: ${trName}`;
+        targetStatusText.innerText = `Kilitli: Kişi`;
+        btnQuickUnlock.style.display = 'inline-block';
+        dismissAlert();
+
+        // İzleyiciye ve kameraya anında hedef güncellemesi gönder
+        if (conn && conn.open) {
+            conn.send({
+                type: 'target_locked',
+                target: {
+                    class: 'person',
+                    label: 'Kişi',
+                    normBox: lockedTarget.normBox
+                }
+            });
+        }
     } else {
-        // Serbest alan hedefi
-        const boxSize = 0.25;
-        const normBox = [
-            Math.max(0, normX - boxSize / 2),
-            Math.max(0, normY - boxSize / 2),
-            boxSize,
-            boxSize
-        ];
-        lockedTarget = {
-            class: 'custom',
-            label: 'Seçili Kişi / Alan',
-            normBox: normBox,
-            lerpBox: normBox,
-            score: 1.0,
-            lastSeen: Date.now(),
-            lost: false
-        };
-        targetStatusText.innerText = `Kilitli: Hedef`;
-    }
-
-    btnQuickUnlock.style.display = 'inline-block';
-    dismissAlert();
-
-    // İzleyiciye ve kameraya anında hedef güncellemesi gönder
-    if (conn && conn.open) {
-        conn.send({
-            type: 'target_locked',
-            target: {
-                class: lockedTarget.class,
-                label: lockedTarget.label,
-                normBox: lockedTarget.normBox
+        // Kişi bulunamadıysa alan kilitleme YAPMA!
+        targetStatusText.innerText = "Kişi bulunamadı — Bir kişiye dokunun";
+        setTimeout(() => {
+            if (!lockedTarget) {
+                targetStatusText.innerText = "Kişiye dokunarak kilitleyin";
             }
-        });
+        }, 1500);
     }
 }
 
@@ -409,11 +389,12 @@ async function runAiDetection() {
         inferCtx.drawImage(vid, 0, 0, inferCanvas.width, inferCanvas.height);
         const predictions = await aiModel.detect(inferCanvas, 8, 0.45);
 
-        // Normalize kutuları hesapla
-        currentDetections = predictions.map(p => {
+        // Sadece insan/kişi (person) tespitlerini al
+        const persons = predictions.filter(p => p.class === 'person');
+        currentDetections = persons.map(p => {
             const [x, y, w, h] = p.bbox;
             return {
-                class: p.class,
+                class: 'person',
                 score: p.score,
                 normBox: [
                     x / inferCanvas.width,
@@ -441,16 +422,9 @@ async function runAiDetection() {
                 ];
                 const dist = Math.hypot(prevCenter[0] - curCenter[0], prevCenter[1] - curCenter[1]);
 
-                if (det.class === lockedTarget.class) {
-                    if (iou > highestIoU || (dist < 0.25 && highestIoU < 0.2)) {
-                        highestIoU = iou;
-                        bestMatch = det;
-                    }
-                } else if (lockedTarget.class === 'custom' && (iou > 0.3 || dist < 0.2)) {
-                    if (iou > highestIoU) {
-                        highestIoU = iou;
-                        bestMatch = det;
-                    }
+                if (iou > highestIoU || (dist < 0.25 && highestIoU < 0.2)) {
+                    highestIoU = iou;
+                    bestMatch = det;
                 }
             }
 
