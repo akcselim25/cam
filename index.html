@@ -14,9 +14,9 @@
 
     <!-- PeerJS WebRTC -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <!-- Yapay Zeka (TensorFlow.js WebGL & COCO-SSD) -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <!-- Yapay zeka motoru (MediaPipe EfficientDet) app.js içinden modül olarak yüklenir -->
+    <link rel="preconnect" href="https://storage.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 
     <style>
         :root {
@@ -358,6 +358,51 @@
             justify-content: space-between;
             gap: 10px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #target-status-text {
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Yapay zeka yükleme ilerlemesi */
+        .ai-bar {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            height: 2px;
+            width: 0%;
+            background: #ffffff;
+            transition: width 0.2s ease, opacity 0.5s ease;
+        }
+
+        .ai-load {
+            margin: -8px 0 20px 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .ai-load-track {
+            height: 3px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.12);
+            overflow: hidden;
+        }
+
+        .ai-load-fill {
+            height: 100%;
+            width: 0%;
+            background: #ffffff;
+            border-radius: 9999px;
+            transition: width 0.2s ease;
+        }
+
+        .ai-load-text {
+            display: block;
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
         }
 
         #btnQuickUnlock {
@@ -464,6 +509,11 @@
         <h1 class="app-logo">CAM</h1>
         <p class="app-sub">Akıllı Hedef Takip Sistemi</p>
 
+        <div class="ai-load" id="menu-ai">
+            <div class="ai-load-track"><div class="ai-load-fill" id="menu-ai-fill"></div></div>
+            <span class="ai-load-text" id="menu-ai-text">Yapay zeka hazırlanıyor %0</span>
+        </div>
+
         <input type="text" id="username" class="inp" placeholder="12345" maxlength="5" inputmode="numeric" autocomplete="off">
 
         <button class="btn btn-primary" id="btnCam">
@@ -521,13 +571,14 @@
                     <span class="status-dot" id="cp"></span>
                     <span id="cs">Bağlantı Bekleniyor</span>
                 </div>
-                <div id="as">Yapay Zeka Hazır</div>
+                <div id="as">Yapay Zeka</div>
             </div>
 
             <!-- HEDEF DURUM BİLGİ KAPSÜLÜ -->
             <div id="target-banner">
-                <span id="target-status-text">Kişiye veya nesneye dokunun</span>
+                <span id="target-status-text">Yapay zeka hazırlanıyor %0</span>
                 <button id="btnQuickUnlock">Kilidi Aç</button>
+                <div class="ai-bar" id="banner-ai-bar"></div>
             </div>
         </div>
 
@@ -573,6 +624,6 @@
     </div>
 </div>
 
-<script type="module" src="app.js?v=70"></script>
+<script type="module" src="app.js?v=90"></script>
 </body>
 </html>
